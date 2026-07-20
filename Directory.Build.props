@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    MSBuildLocator gereksinimi (MSBL001): Microsoft.CodeAnalysis.Workspaces.MSBuild,
+    Microsoft.Build.Framework'ü transitif olarak getirir. Bu assembly çıktı dizinine
+    kopyalanırsa MSBuildLocator.RegisterDefaults() SDK'daki MSBuild ile sürüm çakışması
+    yaşayabilir. ExcludeAssets="runtime" ile kopyalama engellenir; çalışma zamanında
+    doğru sürüm Locator üzerinden SDK'dan yüklenir.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

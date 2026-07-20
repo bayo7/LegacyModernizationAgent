@@ -1,0 +1,30 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+
+## IDE
+.vs/
+.vscode/
+.idea/
+
+## Veri / çalışma alanı (runtime çıktıları)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+## Test / kapsam
+TestResults/
+coverage*.json
+coverage*.xml
+*.trx
+
+## Gizli anahtarlar
+appsettings.*.Local.json
+.env
+
+## Claude Code yerel ayarları (test script'lerinde kalan API anahtarı içeriyor)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

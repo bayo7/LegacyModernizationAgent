@@ -1,0 +1,51 @@
+@* Analiz pipeline'ının canlı adım göstergesi: Kuyruk → Analiz → İndeks → Rapor → Tamam *@
+
+<div class="stepper" title="@(Status == "Failed" ? "Analiz başarısız oldu" : "")">
+    @for (var i = 0; i < Steps.Length; i++)
+    {
+        var (label, icon) = Steps[i];
+        var cls = StepClass(i);
+        <div class="step @cls" style="@(i == Steps.Length - 1 ? "flex:0" : "")">
+            <span class="dot">@(cls == "done" ? "✓" : cls == "failed" ? "✕" : icon)</span>
+            <span class="lbl">@label</span>
+            @if (i < Steps.Length - 1)
+            {
+                <span class="bar"></span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Status { get; set; } = "Queued";
+
+    private static readonly (string Label, string Icon)[] Steps =
+    [
+        ("Kuyruk", "1"),
+        ("Roslyn Analizi", "2"),
+        ("Semantik İndeks", "3"),
+        ("LLM Raporu", "4"),
+        ("Tamam", "5")
+    ];
+
+    private int CurrentIndex => Status switch
+    {
+        "Queued" => 0,
+        "Analyzing" => 1,
+        "Indexing" => 2,
+        "Reporting" => 3,
+        "Completed" => 5, // hepsi done
+        _ => -1           // Failed
+    };
+
+    private string StepClass(int i)
+    {
+        if (Status == "Failed")
+            return i == Steps.Length - 1 ? "failed" : "";
+
+        var current = CurrentIndex;
+        if (i < current) return "done";
+        if (i == current) return "active";
+        return "";
+    }
+}

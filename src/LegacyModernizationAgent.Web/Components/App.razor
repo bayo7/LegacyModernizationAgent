@@ -1,0 +1,21 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    @* Klasik statik dosya servisi kullanılıyor (bkz. Program.cs) — MapStaticAssets'in
+       dev ortamında CSS düzenlendikten sonra sıkıştırılmış kopyayı boş servis etme
+       sorunu yaşandı; fingerprint yerine sürüm parametresiyle önbellek kırılıyor. *@
+    <link rel="stylesheet" href="app.css?v=2" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <HeadOutlet />
+</head>
+
+<body>
+    <Routes />
+    <script src="_framework/blazor.web.js"></script>
+</body>
+
+</html>

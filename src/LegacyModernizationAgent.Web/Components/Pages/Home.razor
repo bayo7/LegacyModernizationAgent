@@ -1,0 +1,220 @@
+@page "/"
+@rendermode InteractiveServer
+@inject ApiClient Api
+@implements IDisposable
+
+<PageTitle>Analizler — LegacyMod Ajanı</PageTitle>
+
+<section class="hero">
+    <h1>Legacy kodunuzu <span class="grad">anlayan</span> analiz</h1>
+    <p>
+        Roslyn yapısal gerçekleri çıkarır, embeddings kod tabanının anlam haritasını kurar,
+        LLM bunları birleştirip önceliklendirilmiş bir modernizasyon planı üretir.
+        Bulgular kesin hata değil — <strong>incelemeye değer sinyallerdir</strong>.
+    </p>
+</section>
+
+<div class="card">
+    <h3>🚀 Yeni Analiz Başlat</h3>
+    <div class="start-grid">
+        <div>
+            <label class="field-label">Solution yolu veya git deposu</label>
+            <div class="input-row">
+                <input type="text" @bind="newSource" @bind:event="oninput"
+                       @onkeydown="@(e => { if (e.Key == "Enter") { _ = StartAnalysisAsync(); } })"
+                       placeholder="C:\repos\Proje\Proje.sln  ·  https://github.com/org/repo" />
+                <button @onclick="StartAnalysisAsync" disabled="@(busy || string.IsNullOrWhiteSpace(newSource))">
+                    @(busy ? "Başlatılıyor…" : "Analiz Et")
+                </button>
+            </div>
+            <div class="example-chips">
+                <span class="hint">Kabul edilir:</span>
+                <span class="chip" @onclick="@(() => newSource = ".sln dosya yolu")">.sln</span>
+                <span class="chip" @onclick="@(() => newSource = ".csproj dosya yolu")">.csproj</span>
+                <span class="chip" @onclick="@(() => newSource = "klasör yolu")">klasör</span>
+                <span class="chip" @onclick="@(() => newSource = "https://github.com/")">git URL</span>
+            </div>
+        </div>
+        <div>
+            <label class="field-label">…veya zip yükleyin</label>
+            <div class="dropzone @(dragging ? "drag" : "")"
+                 @ondragenter="@(() => dragging = true)"
+                 @ondragleave="@(() => dragging = false)">
+                <span class="big">📦</span>
+                <span>Solution zip'ini buraya bırakın ya da tıklayın</span>
+                <span class="hint">en fazla 200 MB</span>
+                <InputFile OnChange="OnZipSelectedAsync" accept=".zip" />
+            </div>
+        </div>
+    </div>
+    @if (startError is not null)
+    {
+        <p class="error-text">@startError</p>
+    }
+    @if (startInfo is not null)
+    {
+        <p class="hint">✅ @startInfo</p>
+    }
+</div>
+
+<div class="card-title-row" style="margin-top:1.4rem">
+    <h3 style="margin:0">Analizler</h3>
+    <button class="ghost" @onclick="RefreshAsync">↻ Yenile</button>
+</div>
+
+@if (jobs is null)
+{
+    <div class="job-grid">
+        @for (var i = 0; i < 3; i++)
+        {
+            <div class="job-card">
+                <div class="skeleton" style="height:2.2em"></div>
+                <div class="skeleton" style="height:1.4em; width:70%"></div>
+                <div class="skeleton" style="height:1.2em; width:45%"></div>
+            </div>
+        }
+    </div>
+}
+else if (jobs.Count == 0)
+{
+    <div class="card empty-state">
+        <div class="big">🗂️</div>
+        <p><strong>Henüz analiz yok.</strong><br />Yukarıdan bir solution yolu girin ya da zip yükleyin — birkaç dakika içinde önceliklendirilmiş raporunuz hazır olur.</p>
+    </div>
+}
+else
+{
+    <div class="job-grid">
+        @foreach (var job in jobs)
+        {
+            <a class="job-card" href="/jobs/@job.Id" style="color:inherit; text-decoration:none;">
+                <div class="meta-row">
+                    <span class="badge st-@job.Status">@StatusLabel(job.Status)</span>
+                    <span class="when">@job.CreatedAt.ToLocalTime().ToString("g")</span>
+                </div>
+                <div class="src">@job.RepoUrlOrPath</div>
+                <PipelineStepper Status="@job.Status" />
+                @if (job.ErrorMessage is not null)
+                {
+                    <div class="error-text" style="font-size:0.8rem">@Truncate(job.ErrorMessage, 120)</div>
+                }
+                <div class="meta-row">
+                    <span class="when">
+                        @(job.CompletedAt is not null
+                            ? $"Süre: {Math.Round((job.CompletedAt.Value - job.CreatedAt).TotalSeconds)} sn"
+                            : "Devam ediyor…")
+                    </span>
+                    <span class="go">İncele →</span>
+                </div>
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private List<JobDto>? jobs;
+    private string newSource = "";
+    private bool busy;
+    private bool dragging;
+    private string? startError;
+    private string? startInfo;
+    private System.Threading.Timer? pollTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        pollTimer = new System.Threading.Timer(async _ =>
+        {
+            if (jobs?.Any(j => j.Status is not ("Completed" or "Failed")) == true)
+            {
+                await RefreshAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            jobs = await Api.ListJobsAsync();
+            if (startError?.StartsWith("API'ye") == true)
+                startError = null;
+        }
+        catch (Exception)
+        {
+            jobs ??= [];
+            startError = "API'ye ulaşılamıyor. LegacyModernizationAgent.Api çalışıyor mu? (http://localhost:5210)";
+        }
+    }
+
+    private async Task StartAnalysisAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newSource) || busy)
+            return;
+
+        busy = true;
+        startError = null;
+        startInfo = null;
+        try
+        {
+            var job = await Api.StartAsync(newSource.Trim());
+            startInfo = "Analiz kuyruğa alındı.";
+            newSource = "";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            startError = $"Analiz başlatılamadı: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task OnZipSelectedAsync(InputFileChangeEventArgs e)
+    {
+        busy = true;
+        dragging = false;
+        startError = null;
+        startInfo = null;
+        try
+        {
+            var file = e.File;
+            if (!file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                startError = "Lütfen .zip uzantılı bir dosya seçin.";
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(maxAllowedSize: 200_000_000);
+            await Api.UploadZipAsync(stream, file.Name);
+            startInfo = $"'{file.Name}' yüklendi, analiz kuyruğa alındı.";
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            startError = $"Zip yüklenemedi: {ex.Message}";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Queued" => "Kuyrukta",
+        "Analyzing" => "Analiz ediliyor",
+        "Indexing" => "İndeksleniyor",
+        "Reporting" => "Rapor üretiliyor",
+        "Completed" => "Tamamlandı",
+        "Failed" => "Başarısız",
+        _ => status
+    };
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max] + "…";
+
+    public void Dispose() => pollTimer?.Dispose();
+}

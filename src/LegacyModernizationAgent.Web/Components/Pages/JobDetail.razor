@@ -1,0 +1,390 @@
+@page "/jobs/{Id:guid}"
+@rendermode InteractiveServer
+@inject ApiClient Api
+@implements IDisposable
+@using System.Text.Json
+@using System.Text.Json.Nodes
+
+<PageTitle>Analiz Detayı — LegacyMod Ajanı</PageTitle>
+
+@if (job is null)
+{
+    @if (loadError is not null)
+    {
+        <div class="card empty-state"><div class="big">🤔</div><p>@loadError</p><a href="/">← Analizlere dön</a></div>
+    }
+    else
+    {
+        <div class="card"><div class="skeleton" style="height:5em"></div></div>
+    }
+}
+else
+{
+    <div class="card">
+        <div class="card-title-row">
+            <h3 style="font-size:1.15rem">📁 <code class="path" style="font-size:0.95rem">@job.RepoUrlOrPath</code></h3>
+            <span class="badge st-@job.Status">@StatusLabel(job.Status)</span>
+        </div>
+        <PipelineStepper Status="@job.Status" />
+        <div class="hint" style="margin-top:0.4rem">
+            Başlangıç: @job.CreatedAt.ToLocalTime().ToString("g")
+            @if (job.CompletedAt is not null)
+            {
+                <text> · Süre: @Math.Round((job.CompletedAt.Value - job.CreatedAt).TotalSeconds) sn</text>
+            }
+        </div>
+        @if (job.ErrorMessage is not null)
+        {
+            <p class="error-text">⚠ @job.ErrorMessage</p>
+        }
+    </div>
+
+    @if (!IsTerminal)
+    {
+        <div class="card empty-state">
+            <div class="big">⏳</div>
+            <p><strong>Analiz devam ediyor…</strong><br />Bu sayfa otomatik güncellenir; işiniz bittiğinde bulgular ve rapor burada belirecek.</p>
+        </div>
+    }
+    else if (job.Status == "Completed")
+    {
+        <div class="stat-row">
+            <div class="stat-tile hl"><div class="label">Toplam Bulgu</div><div class="value">@findings.Count</div></div>
+            <div class="stat-tile crit"><div class="label">Yüksek Önem</div><div class="value">@findings.Count(f => f.Severity == "High")</div></div>
+            <div class="stat-tile warn"><div class="label">Orta Önem</div><div class="value">@findings.Count(f => f.Severity == "Medium")</div></div>
+            <div class="stat-tile low"><div class="label">Düşük Önem</div><div class="value">@findings.Count(f => f.Severity == "Low")</div></div>
+            <div class="stat-tile"><div class="label">Bağımlılık Kenarı</div><div class="value">@dependencies.Count</div></div>
+        </div>
+
+        <div class="tabs">
+            <button class="@TabClass("report")" @onclick="@(() => activeTab = "report")">📋 Rapor</button>
+            <button class="@TabClass("findings")" @onclick="@(() => activeTab = "findings")">🔎 Bulgular<span class="count">@findings.Count</span></button>
+            <button class="@TabClass("graph")" @onclick="@(() => activeTab = "graph")">🕸 Bağımlılıklar</button>
+            <button class="@TabClass("chat")" @onclick="@(() => activeTab = "chat")">💬 Chat<span class="count">@chatMessages.Count</span></button>
+        </div>
+
+        @* ---------- RAPOR ---------- *@
+        @if (activeTab == "report")
+        {
+            @if (report is null)
+            {
+                <div class="card empty-state"><div class="big">📭</div><p>Rapor bulunamadı.</p></div>
+            }
+            else
+            {
+                @if (report["generator"]?.GetValue<string>() == "offline-fallback")
+                {
+                    <p class="hint">ℹ️ Bu rapor LLM olmadan kural tabanlı üretildi. <code>Ai:ApiKey</code> yapılandırıldığında iş etkisi analizi içeren gerekçeli rapor üretilir.</p>
+                }
+                <div class="card report-summary">
+                    <strong>Genel Değerlendirme</strong>
+                    <p style="margin:0.3rem 0 0">@(report["summary"]?.GetValue<string>())</p>
+                </div>
+
+                @foreach (var priority in new[] { "Yüksek", "Orta", "Düşük" })
+                {
+                    var items = ReportItems(priority);
+                    if (items.Count == 0) { continue; }
+                    <div class="pri-head"><span>@PriorityIcon(priority)</span><strong>@priority Öncelik</strong><span class="hint">(@items.Count madde)</span></div>
+                    @foreach (var item in items)
+                    {
+                        <div class="report-item pri-@priority">
+                            <div class="title">@(item["title"]?.GetValue<string>())</div>
+                            <div>@(item["rationale"]?.GetValue<string>())</div>
+                            <div class="action">💡 @(item["suggestedAction"]?.GetValue<string>())</div>
+                        </div>
+                    }
+                }
+            }
+        }
+        @* ---------- BULGULAR ---------- *@
+        else if (activeTab == "findings")
+        {
+            @if (findings.Count == 0)
+            {
+                <div class="card empty-state"><div class="big">🎉</div><p><strong>İncelemeye değer bulgu tespit edilmedi.</strong><br />Kod tabanı analiz kurallarının eşiklerinin altında kalıyor.</p></div>
+            }
+            else
+            {
+                <div class="card">
+                    <h3>Kurallara Göre Dağılım</h3>
+                    @{ var maxCount = Math.Max(1, findings.GroupBy(f => f.RuleName).Max(g => g.Count())); }
+                    @foreach (var group in findings.GroupBy(f => f.RuleName).OrderByDescending(g => g.Count()))
+                    {
+                        <div class="minibar-row" title="@group.Key: @group.Count() bulgu">
+                            <span class="name">@group.Key</span>
+                            <div class="minibar-track"><div class="minibar-fill" style="width:@(group.Count() * 100 / maxCount)%"></div></div>
+                            <span class="val">@group.Count()</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="toolbar">
+                    <input type="text" placeholder="🔍 Sınıf, dosya veya açıklamada ara…"
+                           @bind="searchText" @bind:event="oninput" />
+                    <select @bind="ruleFilter">
+                        <option value="">Tüm kurallar</option>
+                        @foreach (var rule in findings.Select(f => f.RuleName).Distinct().OrderBy(r => r))
+                        {
+                            <option value="@rule">@rule</option>
+                        }
+                    </select>
+                    <select @bind="severityFilter">
+                        <option value="">Tüm önem dereceleri</option>
+                        <option value="High">Yüksek</option>
+                        <option value="Medium">Orta</option>
+                        <option value="Low">Düşük</option>
+                    </select>
+                    <span class="spacer"></span>
+                    <span class="hint">@FilteredFindings.Count / @findings.Count gösteriliyor</span>
+                </div>
+
+                <div class="card table-wrap" style="padding:0.4rem 0.8rem">
+                    <table class="data">
+                        <thead>
+                            <tr><th>Önem</th><th>Güven</th><th>Kural</th><th>Sınıf</th><th>Konum</th><th>Açıklama</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in FilteredFindings)
+                            {
+                                <tr>
+                                    <td><span class="badge sev-@f.Severity">@SeverityLabel(f.Severity)</span></td>
+                                    <td>@SeverityLabel(f.Confidence)</td>
+                                    <td><span class="rule-tag">@f.RuleName</span></td>
+                                    <td>@f.ClassName</td>
+                                    <td class="num"><code class="path">@System.IO.Path.GetFileName(f.FilePath):@f.LineNumber</code></td>
+                                    <td>
+                                        @f.Description
+                                        @if (f.LimitationNote is not null)
+                                        {
+                                            <div class="limitation">@f.LimitationNote</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+        @* ---------- BAĞIMLILIKLAR ---------- *@
+        else if (activeTab == "graph")
+        {
+            <div class="card">
+                <DependencyGraph Edges="dependencies" CycleClasses="cycleClasses" />
+            </div>
+        }
+        @* ---------- CHAT ---------- *@
+        else if (activeTab == "chat")
+        {
+            <div class="card chat-shell">
+                <div class="chat-box">
+                    @if (chatMessages.Count == 0 && !chatBusy)
+                    {
+                        <div class="chat-empty">
+                            <div class="big">💬</div>
+                            <p><strong>Kod tabanınıza soru sorun</strong><br /><span class="hint">Cevaplar analiz bulgularına ve semantik indekse dayanır, kaynak dosyalar gösterilir.</span></p>
+                            <div class="suggest-row">
+                                @foreach (var s in ChatSuggestions)
+                                {
+                                    <span class="chip" @onclick="@(() => { chatInput = s; _ = SendChatAsync(); })">@s</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @foreach (var m in chatMessages)
+                    {
+                        <div class="chat-msg @m.Role">
+                            @m.Content
+                            <div class="meta">@m.CreatedAt.ToLocalTime().ToString("t")</div>
+                        </div>
+                    }
+                    @if (chatBusy)
+                    {
+                        <div class="chat-msg assistant"><span class="typing"><i></i><i></i><i></i></span></div>
+                    }
+                </div>
+                <div class="chat-input">
+                    <input type="text" @bind="chatInput" @bind:event="oninput"
+                           @onkeydown="@(e => { if (e.Key == "Enter") { _ = SendChatAsync(); } })"
+                           placeholder="Sorunuzu yazın… (Enter ile gönderin)" disabled="@chatBusy" />
+                    <button @onclick="SendChatAsync" disabled="@(chatBusy || string.IsNullOrWhiteSpace(chatInput))">Gönder ➤</button>
+                </div>
+                @if (chatError is not null)
+                {
+                    <p class="error-text">@chatError</p>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private JobDto? job;
+    private List<FindingDto> findings = [];
+    private List<DependencyDto> dependencies = [];
+    private JsonNode? report;
+    private List<ChatMessageDto> chatMessages = [];
+    private HashSet<string> cycleClasses = [];
+
+    private string activeTab = "report";
+    private string ruleFilter = "";
+    private string severityFilter = "";
+    private string searchText = "";
+    private string chatInput = "";
+    private bool chatBusy;
+    private string? chatError;
+    private string? loadError;
+    private bool resultsLoaded;
+    private System.Threading.Timer? pollTimer;
+
+    private bool IsTerminal => job?.Status is "Completed" or "Failed";
+
+    private static readonly string[] ChatSuggestions =
+    [
+        "En riskli sınıflar hangileri?",
+        "Nereden refactoring'e başlamalıyım?",
+        "Veritabanı erişimi hangi sınıflarda?"
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+
+        // İş bitmediyse 3 sn'de bir durumu tazele; bitince sonuçları yükle.
+        pollTimer = new System.Threading.Timer(async _ =>
+        {
+            if (job is not null && !IsTerminal)
+            {
+                await LoadAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            job = await Api.GetJobAsync(Id);
+            if (job is null)
+            {
+                loadError = "Analiz bulunamadı.";
+                return;
+            }
+
+            if (job.Status == "Completed" && !resultsLoaded)
+            {
+                findings = await Api.GetFindingsAsync(Id);
+                dependencies = await Api.GetDependenciesAsync(Id);
+                report = await Api.GetReportAsync(Id);
+                chatMessages = await Api.GetChatHistoryAsync(Id);
+                cycleClasses = ExtractCycleClasses(findings);
+                resultsLoaded = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = $"Veri yüklenemedi: {ex.Message}";
+        }
+    }
+
+    private static HashSet<string> ExtractCycleClasses(List<FindingDto> findings)
+    {
+        var result = new HashSet<string>();
+        foreach (var f in findings.Where(f => f.RuleName == "CircularDependency" && f.MetricsJson is not null))
+        {
+            try
+            {
+                var metrics = JsonNode.Parse(f.MetricsJson!);
+                if (metrics?["CycleMembers"] is JsonArray members)
+                {
+                    foreach (var member in members)
+                        result.Add(member!.GetValue<string>());
+                }
+            }
+            catch (JsonException)
+            {
+                // Metrik parse edilemezse görselleştirme işaretlemesi atlanır.
+            }
+        }
+        return result;
+    }
+
+    private List<JsonObject> ReportItems(string priority) =>
+        (report?["items"] as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Where(i => i["priority"]?.GetValue<string>() == priority)
+            .ToList();
+
+    private List<FindingDto> FilteredFindings => findings
+        .Where(f => (ruleFilter == "" || f.RuleName == ruleFilter) &&
+                    (severityFilter == "" || f.Severity == severityFilter) &&
+                    (searchText == "" ||
+                     (f.ClassName?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                     f.FilePath.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                     f.Description.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
+        .OrderByDescending(f => f.Severity == "High" ? 3 : f.Severity == "Medium" ? 2 : 1)
+        .ThenBy(f => f.RuleName)
+        .ToList();
+
+    private string TabClass(string tab) => activeTab == tab ? "active" : "";
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Queued" => "Kuyrukta",
+        "Analyzing" => "Analiz ediliyor",
+        "Indexing" => "İndeksleniyor",
+        "Reporting" => "Rapor üretiliyor",
+        "Completed" => "Tamamlandı",
+        "Failed" => "Başarısız",
+        _ => status
+    };
+
+    private static string SeverityLabel(string value) => value switch
+    {
+        "High" => "Yüksek",
+        "Medium" => "Orta",
+        "Low" => "Düşük",
+        _ => value
+    };
+
+    private static string PriorityIcon(string priority) => priority switch
+    {
+        "Yüksek" => "🔴",
+        "Orta" => "🟠",
+        _ => "⚪"
+    };
+
+    private async Task SendChatAsync()
+    {
+        var message = chatInput.Trim();
+        if (message.Length == 0 || chatBusy)
+            return;
+
+        chatBusy = true;
+        chatError = null;
+        chatInput = "";
+        chatMessages.Add(new ChatMessageDto("user", message, DateTime.UtcNow));
+        StateHasChanged();
+
+        try
+        {
+            var response = await Api.SendChatAsync(Id, message);
+            if (response is not null)
+                chatMessages.Add(new ChatMessageDto("assistant", response.Answer, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            chatError = $"Mesaj gönderilemedi: {ex.Message}";
+        }
+        finally
+        {
+            chatBusy = false;
+        }
+    }
+
+    public void Dispose() => pollTimer?.Dispose();
+}

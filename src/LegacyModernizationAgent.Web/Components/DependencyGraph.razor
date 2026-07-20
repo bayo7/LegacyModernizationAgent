@@ -1,0 +1,119 @@
+@* Bağımlılık grafiği: dairesel yerleşimli SVG (JS bağımlılığı yok — Blazor Server'da
+   sunucu tarafında hesaplanır). Döngü üyeleri kesikli halka + renk + lejant etiketiyle
+   işaretlenir; renk tek başına anlam taşımaz. En bağlantılı N sınıf gösterilir. *@
+
+@if (nodes.Count == 0)
+{
+    <p class="hint">Gösterilecek bağımlılık verisi yok.</p>
+}
+else
+{
+    <div class="graph-legend">
+        <span class="key"><span class="dot" style="background:var(--accent)"></span> Sınıf</span>
+        <span class="key"><span class="dot" style="background:var(--status-critical)"></span> ⚠ Döngü üyesi</span>
+        <span class="key">Düğüm boyutu = bağlantı sayısı · En bağlantılı @nodes.Count sınıf gösteriliyor (toplam @totalNodeCount)</span>
+    </div>
+    <div class="graph-wrap">
+        <svg viewBox="0 0 @Size @Size" style="max-width:920px; width:100%; display:block; margin:0 auto;">
+            @foreach (var edge in visibleEdges)
+            {
+                var from = positions[edge.FromClass];
+                var to = positions[edge.ToClass];
+                var inCycle = CycleClasses.Contains(edge.FromClass) && CycleClasses.Contains(edge.ToClass);
+                <line x1="@F(from.X)" y1="@F(from.Y)" x2="@F(to.X)" y2="@F(to.Y)"
+                      stroke="@(inCycle ? "var(--status-critical)" : "var(--hairline)")"
+                      stroke-width="@(inCycle ? "1.6" : "1")"
+                      stroke-dasharray="@(inCycle ? "5 3" : "none")"
+                      opacity="@(inCycle ? "0.9" : "0.7")" />
+            }
+            @foreach (var node in nodes)
+            {
+                var p = positions[node.Name];
+                var inCycle = CycleClasses.Contains(node.Name);
+                var r = 5 + Math.Min(9, node.Degree);
+                <g>
+                    <circle cx="@F(p.X)" cy="@F(p.Y)" r="@r"
+                            fill="@(inCycle ? "var(--status-critical)" : "var(--accent)")"
+                            stroke="var(--surface)" stroke-width="2">
+                        <title>@node.Name (@node.Degree bağlantı)@(inCycle ? " — döngü üyesi" : "")</title>
+                    </circle>
+                    @if (inCycle)
+                    {
+                        <circle cx="@F(p.X)" cy="@F(p.Y)" r="@(r + 4)" fill="none"
+                                stroke="var(--status-critical)" stroke-width="1.2" stroke-dasharray="3 2" />
+                    }
+                    <text x="@F(p.LabelX)" y="@F(p.LabelY)" text-anchor="@p.Anchor"
+                          font-size="11" fill="var(--ink-2)">@Short(node.Name)</text>
+                </g>
+            }
+        </svg>
+    </div>
+}
+
+@code {
+    [Parameter] public List<DependencyDto> Edges { get; set; } = [];
+    [Parameter] public HashSet<string> CycleClasses { get; set; } = [];
+    [Parameter] public int MaxNodes { get; set; } = 36;
+
+    private const int Size = 940;
+
+    private sealed record Node(string Name, int Degree);
+    private sealed record Pos(double X, double Y, double LabelX, double LabelY, string Anchor);
+
+    private List<Node> nodes = [];
+    private List<DependencyDto> visibleEdges = [];
+    private Dictionary<string, Pos> positions = [];
+    private int totalNodeCount;
+
+    protected override void OnParametersSet()
+    {
+        var degrees = new Dictionary<string, int>();
+        foreach (var edge in Edges)
+        {
+            degrees[edge.FromClass] = degrees.GetValueOrDefault(edge.FromClass) + 1;
+            degrees[edge.ToClass] = degrees.GetValueOrDefault(edge.ToClass) + 1;
+        }
+
+        totalNodeCount = degrees.Count;
+
+        // Döngü üyeleri her zaman dahil; kalan kontenjan bağlantı sayısına göre dolar.
+        var selected = degrees.Keys.Where(CycleClasses.Contains)
+            .Concat(degrees.OrderByDescending(kv => kv.Value).Select(kv => kv.Key))
+            .Distinct()
+            .Take(MaxNodes)
+            .ToList();
+
+        var selectedSet = selected.ToHashSet();
+        nodes = selected.Select(n => new Node(n, degrees[n])).ToList();
+        visibleEdges = Edges
+            .Where(e => selectedSet.Contains(e.FromClass) && selectedSet.Contains(e.ToClass) && e.FromClass != e.ToClass)
+            .ToList();
+
+        var center = Size / 2.0;
+        var radius = Size / 2.0 - 110; // etiketlere pay bırak
+        positions = new Dictionary<string, Pos>();
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var angle = 2 * Math.PI * i / nodes.Count - Math.PI / 2;
+            var x = center + radius * Math.Cos(angle);
+            var y = center + radius * Math.Sin(angle);
+            var labelX = center + (radius + 18) * Math.Cos(angle);
+            var labelY = center + (radius + 18) * Math.Sin(angle) + 4;
+            var anchor = Math.Cos(angle) switch
+            {
+                > 0.25 => "start",
+                < -0.25 => "end",
+                _ => "middle"
+            };
+            positions[nodes[i].Name] = new Pos(x, y, labelX, labelY, anchor);
+        }
+    }
+
+    private static string Short(string fullName)
+    {
+        var name = fullName[(fullName.LastIndexOf('.') + 1)..];
+        return name.Length > 22 ? name[..20] + "…" : name;
+    }
+
+    private static string F(double value) => value.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+}
