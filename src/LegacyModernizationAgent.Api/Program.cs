@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Hangfire;
 using LegacyModernizationAgent.Analyzer.Engine;
 using LegacyModernizationAgent.Application;
@@ -39,6 +41,30 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+
+// Basit API anahtarı koruması: Auth:ApiKey doluysa /api altındaki tüm istekler
+// 'X-Api-Key' başlığını taşımak zorundadır. Boşsa (lokal demo) koruma kapalıdır.
+var apiKey = builder.Configuration["Auth:ApiKey"];
+if (!string.IsNullOrWhiteSpace(apiKey))
+{
+    var expectedKey = Encoding.UTF8.GetBytes(apiKey);
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            var providedKey = Encoding.UTF8.GetBytes(context.Request.Headers["X-Api-Key"].ToString());
+            // Sabit zamanlı karşılaştırma: anahtar, yanıt süresinden tahmin edilemesin.
+            if (!CryptographicOperations.FixedTimeEquals(providedKey, expectedKey))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Geçerli bir X-Api-Key başlığı gerekli." });
+                return;
+            }
+        }
+
+        await next(context);
+    });
+}
 app.MapControllers();
 
 if (builder.Configuration.GetValue("Jobs:UseHangfire", defaultValue: true))

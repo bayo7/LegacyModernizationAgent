@@ -42,7 +42,7 @@ public class SemanticIndexingService(
         var jobFindings = await findings.GetByJobAsync(jobId, ct);
         var findingIdsByClass = jobFindings
             .Where(f => !string.IsNullOrEmpty(f.ClassName))
-            .GroupBy(f => f.ClassName!)
+            .GroupBy(f => ClassKey.Of(f.ClassName!, f.FilePath))
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(f => f.Id).ToList());
 
         await vectorStore.EnsureCollectionAsync(embeddings.VectorSize, ct);
@@ -58,7 +58,7 @@ public class SemanticIndexingService(
                 summary.ClassName,
                 summary.FilePath,
                 summary.SummaryText,
-                findingIdsByClass.TryGetValue(summary.ClassName, out var ids) ? ids : [])).ToList();
+                findingIdsByClass.TryGetValue(ClassKey.Of(summary.ClassName, summary.FilePath), out var ids) ? ids : [])).ToList();
 
             await vectorStore.UpsertAsync(points, ct);
         }

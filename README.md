@@ -80,9 +80,10 @@ dotnet run --project src/LegacyModernizationAgent.Runner -- <solution.sln> [rapo
 |---|---|---|
 | `Storage:AllowLocalPaths` | `true` | `false` ise sunucudaki lokal yollar analiz edilemez; yalnızca git URL'i ve zip upload kabul edilir. API başkalarının erişebildiği bir yerde çalışacaksa kapatın. |
 | `Storage:CleanupAfterAnalysis` | `true` | Analiz bitince klonlanan repo / açılan zip silinir. |
+| `Auth:ApiKey` | boş | Doluysa `/api` altındaki tüm istekler `X-Api-Key` başlığını taşımalıdır. Dashboard için aynı değer Web projesinde `Api:ApiKey` olarak verilir. Anahtarı dosyaya yazmak yerine `Auth__ApiKey` / `Api__ApiKey` ortam değişkenlerini kullanın. |
 | `Cors:AllowedOrigins` | `[]` | Tarayıcıdan çapraz köken erişimine izin verilen adresler. Dashboard API'yi sunucu tarafından çağırdığı için boş bırakılabilir. |
 
-> **Bilinen sınırlar:** API'de kimlik doğrulama yoktur ve MSBuild, yüklenen projenin build mantığını çalıştırabilir. Sistem lokal/güvenilir ortam için tasarlanmıştır; güvenilmeyen repoları analiz edecekseniz API'yi izole bir konteynerde çalıştırın. Ayrıntı: [docs/architecture.md](docs/architecture.md) Bölüm 11.
+> **Bilinen sınırlar:** API anahtarı tek ve paylaşımlıdır (kullanıcı bazlı yetkilendirme yoktur) ve MSBuild, yüklenen projenin build mantığını çalıştırabilir. Sistem lokal/güvenilir ortam için tasarlanmıştır; güvenilmeyen repoları analiz edecekseniz API'yi izole bir konteynerde çalıştırın. Ayrıntı: [docs/architecture.md](docs/architecture.md) Bölüm 11.
 
 ## API Uç Noktaları
 

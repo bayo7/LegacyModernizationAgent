@@ -97,12 +97,12 @@ public class ReportGenerationService(
         // Bulgusu olan sınıfların özetleri "semantik bağlam" olarak eklenir.
         var criticalClasses = jobFindings
             .Where(f => !string.IsNullOrEmpty(f.ClassName))
-            .Select(f => f.ClassName!)
+            .Select(f => ClassKey.Of(f.ClassName!, f.FilePath))
             .Distinct()
             .Take(20)
             .ToHashSet();
 
-        var relevantSummaries = summaries.Where(s => criticalClasses.Contains(s.ClassName)).Take(20).ToList();
+        var relevantSummaries = summaries.Where(s => criticalClasses.Contains(ClassKey.Of(s.ClassName, s.FilePath))).Take(20).ToList();
         if (relevantSummaries.Count > 0)
         {
             prompt.AppendLine("\n## Kod Tabanı Bağlamı (bulgu içeren sınıfların özetleri)");
@@ -149,7 +149,7 @@ public class ReportGenerationService(
             var seeds = criticalSummaries.Take(MaxNeighborSeeds).ToList();
             var vectors = await embeddings.EmbedAsync(seeds.Select(s => s.SummaryText).ToList(), ct);
 
-            var alreadyInPrompt = criticalSummaries.Select(s => s.ClassName).ToHashSet();
+            var alreadyInPrompt = criticalSummaries.Select(s => ClassKey.Of(s.ClassName, s.FilePath)).ToHashSet();
             var neighbors = new Dictionary<string, VectorSearchHit>();
 
             foreach (var vector in vectors)
@@ -158,8 +158,9 @@ public class ReportGenerationService(
                 var hits = await vectorStore.SearchAsync(jobId, vector, NeighborsPerClass + 1, ct);
                 foreach (var hit in hits)
                 {
-                    if (!alreadyInPrompt.Contains(hit.ClassName))
-                        neighbors.TryAdd(hit.ClassName, hit);
+                    var key = ClassKey.Of(hit.ClassName, hit.FilePath);
+                    if (!alreadyInPrompt.Contains(key))
+                        neighbors.TryAdd(key, hit);
                 }
             }
 

@@ -78,7 +78,7 @@ public class AnalysisPipeline(
 
             var findingsByClass = findingEntities
                 .Where(f => !string.IsNullOrEmpty(f.ClassName))
-                .GroupBy(f => f.ClassName!)
+                .GroupBy(f => ClassKey.Of(f.ClassName!, f.FilePath))
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<CoreEntities.Finding>)g.ToList());
 
             await findings.SaveClassSummariesAsync(result.Classes.Select(c => new CoreEntities.ClassSummary
@@ -89,7 +89,7 @@ public class AnalysisPipeline(
                 FilePath = c.FilePath,
                 SummaryText = SummaryTextBuilder.Build(
                     c,
-                    findingsByClass.TryGetValue(c.ClassName, out var classFindings) ? classFindings : [])
+                    findingsByClass.TryGetValue(ClassKey.Of(c.ClassName, c.FilePath), out var classFindings) ? classFindings : [])
             }), ct);
 
             logger.LogInformation(

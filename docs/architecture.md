@@ -76,7 +76,7 @@ Sistem **lokal / güvenilir ortam** için tasarlandı. Alınan önlemler ve bili
 - **Lokal yol analizi:** `Storage:AllowLocalPaths=false` ile kapatılabilir; o durumda yalnızca git URL'i ve zip upload kabul edilir.
 - **CORS:** Varsayılan kapalı; `Cors:AllowedOrigins` ile açıkça tanımlanır. `/hangfire` Hangfire'ın varsayılan yetkilendirmesiyle yalnızca localhost'a açıktır.
 - **Çalışma alanı:** Klon/zip analiz bitince silinir; sonuçlar DB'de kalır.
-- **Kimlik doğrulama yok (açık):** API'ye erişebilen herkes analiz başlatabilir. Paylaşımlı ortama çıkmadan önce auth eklenmeli.
+- **API anahtarı:** `Auth:ApiKey` doluysa `/api` istekleri `X-Api-Key` başlığı ister (sabit zamanlı karşılaştırma); boşsa lokal demo için kapalıdır. Tek, paylaşımlı bir anahtardır — kullanıcı bazlı yetkilendirme yoktur (açık).
 - **MSBuild güvenilmeyen kod çalıştırabilir (açık):** `MSBuildWorkspace` proje dosyalarını değerlendirirken hedefleri/görevleri çalıştırır. Güvenilmeyen repolar için API ağ erişimi kısıtlı bir konteynerde çalıştırılmalı.
-- **Aynı adlı sınıflar (açık):** Bulgu ↔ sınıf özeti eşleştirmesi kısa sınıf adıyla yapılır; farklı namespace'lerde aynı ada sahip sınıfların bulguları özet metninde karışabilir. Çözüm: kuralların `ClassName` alanını namespace'li üretmesi.
+- **Aynı adlı sınıflar:** Bulgu ↔ sınıf özeti eşleştirmesi dosya yolu + sınıf adı çiftiyle yapılır (`ClassKey`); farklı namespace'lerdeki aynı adlı sınıfların bulguları karışmaz.
 - **Gerçek LLM/embedding doğrulaması (açık):** Uçtan uca akış yalnızca anahtarsız fallback modunda doğrulandı.
