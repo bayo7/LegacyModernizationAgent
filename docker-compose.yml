@@ -1,0 +1,12 @@
+# Semantik katman için Qdrant (opsiyonel — olmadan da sistem fallback modunda çalışır).
+#   docker compose up -d
+services:
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  qdrant_data:

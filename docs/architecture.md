@@ -67,3 +67,16 @@ Blazor Server (`LegacyModernizationAgent.Web`) API'yi **HTTP üzerinden** tüket
 - **Faz 1:** 36 birim test + eShopOnWeb (10 proje, 231 sınıf, ~12 sn). İlk koşuda 33 bulgunun ~20'si yanlış pozitifti (PageModel handler'ları, record metodları); muafiyetler eklendikten sonra kalan 12-13 bulgu elle incelendi ve gerçekçi bulundu (ör. `Basket.SetNewBuyerId` gerçekten ölü kod).
 - **Faz 2/3:** API üzerinden uçtan uca: POST → Hangfire → Analyzing → Completed (~21 sn) → findings/report/dependencies/chat uçları doğrulandı (LLM'siz fallback modunda).
 - **Faz 4:** Dashboard ana sayfa + detay sayfası canlı API'ye karşı render doğrulaması.
+
+## 11. Güvenlik sınırları ve bilinen eksikler
+
+Sistem **lokal / güvenilir ortam** için tasarlandı. Alınan önlemler ve bilinçli olarak açık bırakılanlar:
+
+- **Git argümanları:** URL, `ProcessStartInfo.ArgumentList` ve `--` ayırıcısıyla verilir; biçimi doğrulanmayan değerler reddedilir (argüman enjeksiyonuna karşı).
+- **Lokal yol analizi:** `Storage:AllowLocalPaths=false` ile kapatılabilir; o durumda yalnızca git URL'i ve zip upload kabul edilir.
+- **CORS:** Varsayılan kapalı; `Cors:AllowedOrigins` ile açıkça tanımlanır. `/hangfire` Hangfire'ın varsayılan yetkilendirmesiyle yalnızca localhost'a açıktır.
+- **Çalışma alanı:** Klon/zip analiz bitince silinir; sonuçlar DB'de kalır.
+- **Kimlik doğrulama yok (açık):** API'ye erişebilen herkes analiz başlatabilir. Paylaşımlı ortama çıkmadan önce auth eklenmeli.
+- **MSBuild güvenilmeyen kod çalıştırabilir (açık):** `MSBuildWorkspace` proje dosyalarını değerlendirirken hedefleri/görevleri çalıştırır. Güvenilmeyen repolar için API ağ erişimi kısıtlı bir konteynerde çalıştırılmalı.
+- **Aynı adlı sınıflar (açık):** Bulgu ↔ sınıf özeti eşleştirmesi kısa sınıf adıyla yapılır; farklı namespace'lerde aynı ada sahip sınıfların bulguları özet metninde karışabilir. Çözüm: kuralların `ClassName` alanını namespace'li üretmesi.
+- **Gerçek LLM/embedding doğrulaması (açık):** Uçtan uca akış yalnızca anahtarsız fallback modunda doğrulandı.

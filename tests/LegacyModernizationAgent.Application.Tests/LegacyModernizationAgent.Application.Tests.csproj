@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LegacyModernizationAgent.Application\LegacyModernizationAgent.Application.csproj" />
+    <ProjectReference Include="..\..\src\LegacyModernizationAgent.Infrastructure\LegacyModernizationAgent.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
