@@ -108,3 +108,22 @@ public class UnresolvedReferenceTests
         Assert.Empty(findings);
     }
 }
+
+public class ParameterizedTestAttributeTests
+{
+    [Theory]
+    [InlineData("DataTestMethod")]
+    [InlineData("TestCase")]
+    [InlineData("TestCaseSource")]
+    public async Task Parametreli_test_attribute_lari_muaf_tutulur(string attributeName)
+    {
+        // eShopOnWeb'de [DataTestMethod] ile işaretli bir MSTest metodu yanlışlıkla raporlanıyordu.
+        var source = "public class " + attributeName + "Attribute : System.Attribute { }\n" +
+                     "public class EndpointTests { [" + attributeName + "] public void Runs() { } }";
+        var solution = RoslynTestHost.CreateSolution(("Tests.cs", source));
+
+        var findings = await new UnusedCodeAnalyzer().AnalyzeAsync(solution);
+
+        Assert.Empty(findings);
+    }
+}

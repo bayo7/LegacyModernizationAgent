@@ -27,6 +27,7 @@ public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
     private static readonly HashSet<string> FrameworkInvokedAttributes = new(StringComparer.Ordinal)
     {
         "FactAttribute", "TheoryAttribute", "TestAttribute", "TestMethodAttribute",
+        "DataTestMethodAttribute", "TestCaseAttribute", "TestCaseSourceAttribute",
         "BenchmarkAttribute", "SetUpAttribute", "TearDownAttribute",
         "OneTimeSetUpAttribute", "OneTimeTearDownAttribute",
         "TestInitializeAttribute", "TestCleanupAttribute",
