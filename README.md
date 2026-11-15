@@ -79,6 +79,7 @@ dotnet run --project src/LegacyModernizationAgent.Runner -- <solution.sln> [rapo
 | Ayar | Varsayılan | Açıklama |
 |---|---|---|
 | `Storage:AllowLocalPaths` | `true` | `false` ise sunucudaki lokal yollar analiz edilemez; yalnızca git URL'i ve zip upload kabul edilir. API başkalarının erişebildiği bir yerde çalışacaksa kapatın. |
+| `Storage:RestoreBeforeAnalysis` | `true` | Klonlanan/yüklenen kaynakta analizden önce `dotnet restore` çalıştırır. Kapalıyken paket tipleri çözümlenemez ve yanlış pozitifler artar. |
 | `Storage:CleanupAfterAnalysis` | `true` | Analiz bitince klonlanan repo / açılan zip silinir. |
 | `Auth:ApiKey` | boş | Doluysa `/api` altındaki tüm istekler `X-Api-Key` başlığını taşımalıdır. Dashboard için aynı değer Web projesinde `Api:ApiKey` olarak verilir. Anahtarı dosyaya yazmak yerine `Auth__ApiKey` / `Api__ApiKey` ortam değişkenlerini kullanın. |
 | `Cors:AllowedOrigins` | `[]` | Tarayıcıdan çapraz köken erişimine izin verilen adresler. Dashboard API'yi sunucu tarafından çağırdığı için boş bırakılabilir. |

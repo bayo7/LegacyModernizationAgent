@@ -26,6 +26,13 @@ public class StorageOptions
     /// </summary>
     public bool AllowLocalPaths { get; set; } = true;
 
+    /// <summary>
+    /// Klonlanan/açılan kaynakta analizden önce 'dotnet restore' çalıştırılsın mı.
+    /// Kapalıyken paket referansları çözümlenemez ve özellikle UnusedCode kuralı
+    /// test metodlarını / arayüz implementasyonlarını yanlışlıkla işaretler.
+    /// </summary>
+    public bool RestoreBeforeAnalysis { get; set; } = true;
+
     /// <summary>Analiz bitince klon/zip çalışma alanı silinsin mi (hata ayıklarken false yapılabilir).</summary>
     public bool CleanupAfterAnalysis { get; set; } = true;
 }
@@ -63,6 +70,72 @@ public partial class GitSourcePreparer(IOptions<StorageOptions> options, ILogger
             return repoUrlOrPath;
 
         throw new FileNotFoundException($"Analiz kaynağı bulunamadı: {repoUrlOrPath}");
+    }
+
+    public async Task RestoreDependenciesAsync(string solutionOrProjectPath, CancellationToken ct = default)
+    {
+        // Yalnızca kendi çalışma alanımızdaki kaynaklar: kullanıcının lokal klasörüne yazmayız.
+        if (!_options.RestoreBeforeAnalysis || !IsUnderWorkRoot(solutionOrProjectPath))
+            return;
+
+        var psi = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            // Reponun global.json'ı (SDK sabitlemesi) geçerli olsun diye proje klasöründen çalıştırılır.
+            WorkingDirectory = Path.GetDirectoryName(solutionOrProjectPath) ?? _options.WorkRoot
+        };
+        foreach (var arg in new[] { "restore", solutionOrProjectPath, "--nologo", "--verbosity", "quiet" })
+            psi.ArgumentList.Add(arg);
+
+        // MSBuildLocator bu süreçte MSBuild'i belirli bir SDK'ya sabitleyen ortam değişkenleri
+        // ayarlar; alt süreç farklı bir SDK seçerse (global.json) bunlar çakışır.
+        foreach (var variable in new[] { "MSBUILD_EXE_PATH", "MSBuildSDKsPath", "MSBuildExtensionsPath" })
+            psi.Environment.Remove(variable);
+
+        logger.LogInformation("Bağımlılıklar geri yükleniyor (dotnet restore): {Path}", solutionOrProjectPath);
+
+        Process? process = null;
+        try
+        {
+            process = Process.Start(psi)
+                ?? throw new InvalidOperationException("dotnet süreci başlatılamadı (dotnet PATH'te mi?).");
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromMinutes(5));
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = await process.StandardError.ReadToEndAsync(timeout.Token);
+            var stdout = await stdoutTask;
+            await process.WaitForExitAsync(timeout.Token);
+
+            if (process.ExitCode != 0)
+            {
+                var output = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                logger.LogWarning(
+                    "dotnet restore başarısız (exit {ExitCode}); analiz çözümlenemeyen referanslarla sürecek ve yanlış pozitif artabilir: {Output}",
+                    process.ExitCode, output.Length <= 2000 ? output : output[..2000]);
+            }
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            // Zaman aşımı, dotnet'in bulunamaması vb. — restore opsiyonel bir iyileştirmedir.
+            logger.LogWarning(ex, "dotnet restore tamamlanamadı; analiz restore olmadan sürecek.");
+            try
+            {
+                if (process is { HasExited: false })
+                    process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Süreç bu arada kapanmış.
+            }
+        }
+        finally
+        {
+            process?.Dispose();
+        }
     }
 
     public void Cleanup(Guid jobId)

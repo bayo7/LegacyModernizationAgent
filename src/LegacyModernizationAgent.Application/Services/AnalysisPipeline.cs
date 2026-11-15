@@ -49,6 +49,8 @@ public class AnalysisPipeline(
                 ? sourcePath
                 : Path.GetDirectoryName(Path.GetFullPath(sourcePath)) ?? sourcePath;
 
+            await sourcePreparer.RestoreDependenciesAsync(targetPath, ct);
+
             logger.LogInformation("Roslyn analizi başlıyor: {Path}", targetPath);
             var result = await MsBuildSolutionLoader.AnalyzeAsync(
                 targetPath,

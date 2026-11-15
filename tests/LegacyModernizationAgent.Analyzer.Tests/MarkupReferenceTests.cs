@@ -72,3 +72,39 @@ public sealed class MarkupReferenceTests : IDisposable
         Assert.Equal("NeverCalledAnywhere", finding.Metrics!["MethodName"]);
     }
 }
+
+public class UnresolvedReferenceTests
+{
+    [Fact]
+    public async Task Cozumlenemeyen_test_attribute_u_olan_metod_bulgu_uretmez()
+    {
+        // xunit referansı yok: [Fact] çözümlenemez — restore edilmemiş bir repoyu taklit eder.
+        var solution = RoslynTestHost.CreateSolution(("Tests.cs", """
+            public class BasketTests
+            {
+                [Fact]
+                public void AddsItem() { }
+            }
+            """));
+
+        var findings = await new UnusedCodeAnalyzer().AnalyzeAsync(solution);
+
+        Assert.Empty(findings);
+    }
+
+    [Fact]
+    public async Task Cozumlenemeyen_arayuzu_olan_tipin_metodlari_bulgu_uretmez()
+    {
+        // IHealthCheck tanımlı değil: metodun arayüz üyesi olup olmadığı bilinemez.
+        var solution = RoslynTestHost.CreateSolution(("HealthCheck.cs", """
+            public class ApiHealthCheck : IHealthCheck
+            {
+                public int CheckHealth() => 1;
+            }
+            """));
+
+        var findings = await new UnusedCodeAnalyzer().AnalyzeAsync(solution);
+
+        Assert.Empty(findings);
+    }
+}

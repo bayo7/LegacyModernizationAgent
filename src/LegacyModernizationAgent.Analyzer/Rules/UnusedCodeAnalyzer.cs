@@ -142,10 +142,16 @@ public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
 
         if (method.GetAttributes().Any(a =>
                 a.AttributeClass is { } attr &&
-                (FrameworkInvokedAttributes.Contains(attr.Name) || attr.Name == "GeneratedCodeAttribute")))
+                (FrameworkInvokedAttributes.Contains(NormalizeAttributeName(attr.Name)) || attr.Name == "GeneratedCodeAttribute")))
         {
             return false;
         }
+
+        // Tipin taban sınıfı ya da arayüzlerinden biri çözümlenemiyorsa (restore edilmemiş
+        // paket), metodun bir arayüz/taban üyesini karşılayıp karşılamadığı bilinemez.
+        // Bilinmeyeni "kullanılmıyor" diye raporlamak yerine sessiz kalınır.
+        if (HasUnresolvedBaseOrInterface(method.ContainingType))
+            return false;
 
         // Interface implementasyonu mu? (explicit veya implicit)
         if (method.ExplicitInterfaceImplementations.Length > 0)
@@ -162,6 +168,27 @@ public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Çözümlenemeyen attribute'larda (ör. xunit restore edilmemişken [Fact]) sembol adı
+    /// kaynakta yazıldığı gibi gelebilir ("Fact"); karşılaştırma için "…Attribute" biçimine getirilir.
+    /// </summary>
+    private static string NormalizeAttributeName(string name) =>
+        name.EndsWith("Attribute", StringComparison.Ordinal) ? name : name + "Attribute";
+
+    private static bool HasUnresolvedBaseOrInterface(INamedTypeSymbol type)
+    {
+        if (type.AllInterfaces.Any(i => i.TypeKind == TypeKind.Error))
+            return true;
+
+        for (var baseType = type.BaseType; baseType is not null; baseType = baseType.BaseType)
+        {
+            if (baseType.TypeKind == TypeKind.Error)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
