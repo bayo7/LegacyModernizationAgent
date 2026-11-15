@@ -13,6 +13,10 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="LegacyModernizationAgent.Application.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

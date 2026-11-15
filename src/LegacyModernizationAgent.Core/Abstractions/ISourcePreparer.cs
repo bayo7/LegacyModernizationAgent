@@ -8,4 +8,10 @@ namespace LegacyModernizationAgent.Core.Abstractions;
 public interface ISourcePreparer
 {
     Task<string> PrepareAsync(string repoUrlOrPath, Guid jobId, CancellationToken ct = default);
+
+    /// <summary>
+    /// İş için oluşturulan geçici çalışma alanını (klon / açılmış zip / yüklenen zip) siler.
+    /// Kullanıcının verdiği lokal yollara dokunmaz. Hata fırlatmaz; silinemeyenler loglanır.
+    /// </summary>
+    void Cleanup(Guid jobId);
 }

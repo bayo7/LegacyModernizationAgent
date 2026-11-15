@@ -124,6 +124,12 @@ public class AnalysisPipeline(
             job.CompletedAt = DateTime.UtcNow;
             await SetStatusAsync(job, JobStatus.Failed, CancellationToken.None);
         }
+        finally
+        {
+            // Klon/zip çalışma alanı yalnızca analiz için gerekli; sonuçlar DB'de.
+            // Silinmezse her analiz temp klasöründe bir repo kopyası biriktirir.
+            sourcePreparer.Cleanup(job.Id);
+        }
     }
 
     private async Task SetStatusAsync(AnalysisJob job, JobStatus status, CancellationToken ct)

@@ -22,8 +22,14 @@ public class ReportGenerationService(
     IFindingRepository findings,
     IReportRepository reports,
     ILlmClient llm,
+    IEmbeddingClient embeddings,
+    IVectorStore vectorStore,
     ILogger<ReportGenerationService> logger) : IReportGenerationService
 {
+    private const int MaxNeighborSeeds = 8;   // komşusu aranacak kritik sınıf sayısı (embedding maliyeti sınırı)
+    private const int NeighborsPerClass = 3;
+    private const int MaxNeighbors = 12;      // prompt'a eklenecek toplam komşu (token bütçesi)
+
     private const string SystemPrompt =
         "Sen bir senior .NET mimarisin. Aşağıdaki statik analiz bulgularını ve kod tabanı bağlamını incele. " +
         "Her bulguyu iş etkisi ve düzeltme zorluğuna göre önceliklendir (Yüksek/Orta/Düşük), gerekçesini yaz, " +
@@ -42,7 +48,7 @@ public class ReportGenerationService(
         {
             try
             {
-                reportBody = await GenerateWithLlmAsync(jobFindings, summaries, ct);
+                reportBody = await GenerateWithLlmAsync(jobId, jobFindings, summaries, ct);
             }
             catch (Exception ex)
             {
@@ -70,6 +76,7 @@ public class ReportGenerationService(
     }
 
     private async Task<JsonObject> GenerateWithLlmAsync(
+        Guid jobId,
         IReadOnlyList<Finding> jobFindings,
         IReadOnlyList<ClassSummary> summaries,
         CancellationToken ct)
@@ -103,6 +110,16 @@ public class ReportGenerationService(
                 prompt.AppendLine($"---\n{s.SummaryText}");
         }
 
+        // CLAUDE.md 4.3-a: kritik sınıfların embedding uzayındaki komşuları — bulgusu olmayan
+        // ama kavramsal olarak ilişkili sınıflar LLM'in iş etkisini değerlendirmesine yardım eder.
+        var neighbors = await FindSemanticNeighborsAsync(jobId, relevantSummaries, ct);
+        if (neighbors.Count > 0)
+        {
+            prompt.AppendLine("\n## Semantik Komşular (bulgu içeren sınıflarla kavramsal olarak ilişkili sınıflar)");
+            foreach (var n in neighbors)
+                prompt.AppendLine($"---\n{n.SummaryText}");
+        }
+
         var response = await llm.CompleteAsync(SystemPrompt, prompt.ToString(), ct);
         var json = ExtractJson(response);
 
@@ -110,6 +127,49 @@ public class ReportGenerationService(
             ?? throw new InvalidOperationException("LLM yanıtı JSON object olarak parse edilemedi.");
         parsed["generator"] = "llm";
         return parsed;
+    }
+
+    /// <summary>
+    /// Kritik sınıfların özet metinlerini embed edip Qdrant'ta en yakın sınıfları arar.
+    /// Embedding/Qdrant yoksa ya da çağrı başarısız olursa boş döner — rapor üretimi durmaz.
+    /// </summary>
+    private async Task<IReadOnlyList<VectorSearchHit>> FindSemanticNeighborsAsync(
+        Guid jobId,
+        IReadOnlyList<ClassSummary> criticalSummaries,
+        CancellationToken ct)
+    {
+        if (criticalSummaries.Count == 0 || !embeddings.IsConfigured)
+            return [];
+
+        try
+        {
+            if (!await vectorStore.IsAvailableAsync(ct))
+                return [];
+
+            var seeds = criticalSummaries.Take(MaxNeighborSeeds).ToList();
+            var vectors = await embeddings.EmbedAsync(seeds.Select(s => s.SummaryText).ToList(), ct);
+
+            var alreadyInPrompt = criticalSummaries.Select(s => s.ClassName).ToHashSet();
+            var neighbors = new Dictionary<string, VectorSearchHit>();
+
+            foreach (var vector in vectors)
+            {
+                // +1: en yakın sonuç çoğunlukla sınıfın kendisidir.
+                var hits = await vectorStore.SearchAsync(jobId, vector, NeighborsPerClass + 1, ct);
+                foreach (var hit in hits)
+                {
+                    if (!alreadyInPrompt.Contains(hit.ClassName))
+                        neighbors.TryAdd(hit.ClassName, hit);
+                }
+            }
+
+            return neighbors.Values.OrderByDescending(h => h.Score).Take(MaxNeighbors).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "[{JobId}] Semantik komşu araması başarısız; rapor komşu bağlamı olmadan üretiliyor.", jobId);
+            return [];
+        }
     }
 
     /// <summary>LLM'ler bazen JSON'u ```json ... ``` bloğuna sarar; ayıkla.</summary>

@@ -15,7 +15,15 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+
+// CORS varsayılan olarak kapalı: dashboard (Blazor Server) API'yi sunucu tarafından çağırdığı
+// için tarayıcıdan çapraz köken erişimine ihtiyaç yok. Bir SPA eklenirse Cors:AllowedOrigins doldurulur.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+{
+    if (allowedOrigins.Length > 0)
+        p.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod();
+}));
 
 var app = builder.Build();
 
@@ -36,6 +44,7 @@ app.MapControllers();
 if (builder.Configuration.GetValue("Jobs:UseHangfire", defaultValue: true))
 {
     // Job durumlarını görselleştiren hazır dashboard — demo sırasında gösterilebilir.
+    // Hangfire varsayılan yetkilendirmesi yalnızca localhost isteklerine izin verir.
     app.UseHangfireDashboard("/hangfire");
 }
 
