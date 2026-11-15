@@ -25,6 +25,7 @@ Sistemin ana riski gürültü üretip güven kaybetmektir. Alınan önlemler:
 - Her bulgu `Confidence` (High/Medium/Low) ve kullanıcıya gösterilen `LimitationNote` taşır.
 - Rapor/UI dili asla "hata/bug" demez; "incelemeye değer" der.
 - Auto-generated kod (Designer.cs, Migrations, obj/, `[GeneratedCode]`) analiz dışıdır.
+- `UnusedCode`, adı bir `.razor`/`.cshtml` dosyasında geçen metodları da muaf tutar: Razor'dan yapılan çağrılar compilation'da görünmeyebildiği için yalnızca bileşenlerden çağrılan metodlar yanlış pozitif üretiyordu (eShopOnWeb/BlazorAdmin'de gözlendi). Ad eşleşmesine dayalı bilinçli bir güvenlik ağıdır.
 - `UnusedCode` en riskli kuraldır; muafiyet listesi gerçek projede (eShopOnWeb) test edilerek genişletildi: controller action'ları, Razor PageModel handler'ları, Blazor/SignalR tipleri, middleware `Invoke(Async)`, interface implementasyonları, virtual/override, test yaşam döngüsü attribute'ları, record'ların derleyici üretimi metodları.
 - `LongMethod` satır sayısını cyclomatic complexity ile birlikte değerlendirir: uzun ama düz mapping metodu Düşük önem alır, kısa ama iç içe koşullu metod da yakalanır.
 - `CircularDependency` domain içi doğal döngüleri (Order ↔ OrderLine) Düşük, katmanlar arası döngüleri Yüksek önemle ayırır (namespace segmentlerinden katman tespiti).
@@ -75,7 +76,7 @@ Sistem **lokal / güvenilir ortam** için tasarlandı. Alınan önlemler ve bili
 - **Git argümanları:** URL, `ProcessStartInfo.ArgumentList` ve `--` ayırıcısıyla verilir; biçimi doğrulanmayan değerler reddedilir (argüman enjeksiyonuna karşı).
 - **Lokal yol analizi:** `Storage:AllowLocalPaths=false` ile kapatılabilir; o durumda yalnızca git URL'i ve zip upload kabul edilir.
 - **CORS:** Varsayılan kapalı; `Cors:AllowedOrigins` ile açıkça tanımlanır. `/hangfire` Hangfire'ın varsayılan yetkilendirmesiyle yalnızca localhost'a açıktır.
-- **Çalışma alanı:** Klon/zip analiz bitince silinir; sonuçlar DB'de kalır.
+- **Çalışma alanı:** Klon/zip analiz bitince silinir; sonuçlar DB'de kalır. Bulgulardaki dosya yolları kaynak köküne göre göreli saklanır (geçici klasör yolu sızmaz).
 - **API anahtarı:** `Auth:ApiKey` doluysa `/api` istekleri `X-Api-Key` başlığı ister (sabit zamanlı karşılaştırma); boşsa lokal demo için kapalıdır. Tek, paylaşımlı bir anahtardır — kullanıcı bazlı yetkilendirme yoktur (açık).
 - **MSBuild güvenilmeyen kod çalıştırabilir (açık):** `MSBuildWorkspace` proje dosyalarını değerlendirirken hedefleri/görevleri çalıştırır. Güvenilmeyen repolar için API ağ erişimi kısıtlı bir konteynerde çalıştırılmalı.
 - **Aynı adlı sınıflar:** Bulgu ↔ sınıf özeti eşleştirmesi dosya yolu + sınıf adı çiftiyle yapılır (`ClassKey`); farklı namespace'lerdeki aynı adlı sınıfların bulguları karışmaz.

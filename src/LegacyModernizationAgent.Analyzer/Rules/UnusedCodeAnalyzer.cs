@@ -1,4 +1,5 @@
 using LegacyModernizationAgent.Analyzer.Abstractions;
+using LegacyModernizationAgent.Analyzer.Engine;
 using LegacyModernizationAgent.Analyzer.Graph;
 using LegacyModernizationAgent.Analyzer.Models;
 using Microsoft.CodeAnalysis;
@@ -16,6 +17,7 @@ namespace LegacyModernizationAgent.Analyzer.Rules;
 ///  - Interface implementasyonları (çağrı interface üzerinden yapılır)
 ///  - virtual/override/abstract metodlar (polimorfik çağrı görünmez)
 ///  - Main, test metodları ([Fact], [Test]...), [GeneratedCode]
+///  - Adı bir .razor/.cshtml dosyasında geçen metodlar (Razor'dan çağrı compilation'da görünmeyebilir)
 /// </summary>
 public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
 {
@@ -42,6 +44,14 @@ public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
     {
         var findings = new List<Finding>();
 
+        // .razor/.cshtml dosyalarından yapılan çağrılar compilation'da görünmeyebilir;
+        // bu dosyalarda adı geçen metodlar muaf tutulur (bkz. MarkupReferenceScanner).
+        var markupIdentifiers = MarkupReferenceScanner.CollectIdentifiers(
+            solution.Projects
+                .Select(p => Path.GetDirectoryName(p.FilePath))
+                .Where(d => !string.IsNullOrEmpty(d))
+                .Select(d => d!));
+
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync(cancellationToken);
@@ -58,6 +68,9 @@ public sealed class UnusedCodeAnalyzer : ISolutionAnalyzer
                 foreach (var method in classSymbol.GetMembers().OfType<IMethodSymbol>())
                 {
                     if (!IsCandidate(method, isFrameworkInvoked))
+                        continue;
+
+                    if (markupIdentifiers.Contains(method.Name))
                         continue;
 
                     var references = await SymbolFinder.FindReferencesAsync(method, solution, cancellationToken);

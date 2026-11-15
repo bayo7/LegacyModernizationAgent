@@ -44,6 +44,11 @@ public class AnalysisPipeline(
                     ?? throw new InvalidOperationException($"'{sourcePath}' içinde .sln veya .csproj bulunamadı.")
                 : sourcePath;
 
+            // Bulgulardaki dosya yolları bu köke göre göreli saklanır (bkz. SourcePaths).
+            var sourceRoot = Directory.Exists(sourcePath)
+                ? sourcePath
+                : Path.GetDirectoryName(Path.GetFullPath(sourcePath)) ?? sourcePath;
+
             logger.LogInformation("Roslyn analizi başlıyor: {Path}", targetPath);
             var result = await MsBuildSolutionLoader.AnalyzeAsync(
                 targetPath,
@@ -59,7 +64,7 @@ public class AnalysisPipeline(
                 RuleName = f.RuleName,
                 Severity = f.Severity.ToString(),
                 Confidence = f.Confidence.ToString(),
-                FilePath = f.FilePath,
+                FilePath = SourcePaths.ToRelative(sourceRoot, f.FilePath),
                 LineNumber = f.LineNumber,
                 ClassName = f.ClassName,
                 Description = f.Description,
@@ -86,10 +91,10 @@ public class AnalysisPipeline(
                 AnalysisJobId = job.Id,
                 ClassName = c.ClassName,
                 Namespace = c.Namespace,
-                FilePath = c.FilePath,
+                FilePath = SourcePaths.ToRelative(sourceRoot, c.FilePath),
                 SummaryText = SummaryTextBuilder.Build(
                     c,
-                    findingsByClass.TryGetValue(ClassKey.Of(c.ClassName, c.FilePath), out var classFindings) ? classFindings : [])
+                    findingsByClass.TryGetValue(ClassKey.Of(c.ClassName, SourcePaths.ToRelative(sourceRoot, c.FilePath)), out var classFindings) ? classFindings : [])
             }), ct);
 
             logger.LogInformation(

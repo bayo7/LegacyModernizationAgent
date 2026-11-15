@@ -39,7 +39,11 @@ internal static class RoslynTestHost
         return (syntaxTree.GetRoot(), compilation.GetSemanticModel(syntaxTree));
     }
 
-    public static Solution CreateSolution(params (string FileName, string Source)[] documents)
+    public static Solution CreateSolution(params (string FileName, string Source)[] documents) =>
+        CreateSolutionAt(null, documents);
+
+    /// <summary>Proje dosya yolu verilen sürüm: diskteki komşu dosyalara (ör. .razor) bakan kurallar için.</summary>
+    public static Solution CreateSolutionAt(string? projectFilePath, params (string FileName, string Source)[] documents)
     {
         var workspace = new AdhocWorkspace();
         var projectInfo = ProjectInfo.Create(
@@ -48,6 +52,7 @@ internal static class RoslynTestHost
             "TestProject",
             "TestProject",
             LanguageNames.CSharp,
+            filePath: projectFilePath,
             compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
             metadataReferences: References.Value);
 
