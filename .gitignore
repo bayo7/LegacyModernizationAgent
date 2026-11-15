@@ -10,7 +10,12 @@ obj/
 .idea/
 
 ## Veri / çalışma alanı (runtime çıktıları)
-data/
+# DİKKAT: düz 'data/' deseni büyük/küçük harf duyarsız dosya sistemlerinde
+# src/LegacyModernizationAgent.Infrastructure/Data/ klasörünü de yutuyordu (EF katmanı
+# bu yüzden repoya girmemişti). Desen yalnızca çalışma zamanı klasörlerine sabitlendi.
+/data/
+src/LegacyModernizationAgent.Api/data/
+src/LegacyModernizationAgent.Runner/data/
 *.db
 *.db-shm
 *.db-wal
